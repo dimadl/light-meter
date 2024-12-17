@@ -1,34 +1,12 @@
 #include <BH1750.h>
 #include <Wire.h>
-#include <SPI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <EEPROM.h>
+#include <U8g2lib.h>
 
-
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
-// Declaration for SSD1306 display connected using software SPI (default case):
-// #define OLED_MOSI  2
-// #define OLED_CLK   8
-//#define OLED_DC    12
-//#define OLED_CS    13
-// #define OLED_RESET 4
-
-
-#define OLED_MOSI  11
-#define OLED_CLK   13
-#define OLED_DC 6
-#define OLED_CS    10
-#define OLED_RESET 5
-
-// Button to cath value
-#define capture_button_in_pin 7
-#define scroll_button_pin 9
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT,OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
 BH1750 ligthSensor;
+
+//Display
+U8G2_SSD1306_128X64_NONAME_2_HW_I2C u8g2(U8G2_R0, SCL, SDA, U8X8_PIN_NONE);
 
 class Shutter {
   public:
@@ -67,123 +45,16 @@ mapFShutter fs8 = {16, &shutter16};
 
 mapFShutter* definedFShutterMapping[8] = {&fs1, &fs2, &fs3, &fs4, &fs5, &fs6, &fs7, &fs8} ;
 
-//Global values
-uint16_t latestMetering = 0;
-
+//ISO Settings
 int isoSettingAddress = 0;
 
-uint16_t isoSettings[] = {50, 100, 200, 400}; 
-uint8_t isoSettingsPosition = 0;
-
-uint8_t currrentMenuPosition = 0;
-bool isMenuActive = false;
-bool isSettingsActve = false;
-bool isMeasureActive = false;
+uint16_t isoSettings[4] = {400, 200, 100, 50}; 
+uint8_t isoSettingsPosition = 4;
 
 void log(uint16_t lux) {
   Serial.print("Light measured: ");
   Serial.print(lux);
   Serial.println( "lx");
-}
-
-void displayMenu(int position) {
-
-  isMenuActive = true;
-  isSettingsActve = false;
-  isMeasureActive = false;
-
-  display.clearDisplay();
-  display.setTextColor(BLACK, WHITE);
-  display.setCursor(10, 5);
-  display.print("Menu");
-  display.setCursor(10, 30);
-  display.setTextColor(WHITE);
-  display.print("Measure");
-  display.setCursor(10, 40);
-  display.print("ISO");
-  display.drawRect(8, 28 + 11 * position, 60, 11, WHITE);
-  display.display();
-}
-
-void displaySettings1() {
-
-  isMenuActive = false;
-  isMeasureActive = false;
-  isSettingsActve = true;
-
-  display.clearDisplay();
-  display.setTextColor(BLACK, WHITE);
-  display.setCursor(10, 5);
-  display.print("Settings");
-
-  int8_t currentDistribIndex = isoSettingsPosition - 1;
-
-  display.setTextColor(WHITE);
-  display.setCursor(10, 20);
-
-  if (currentDistribIndex >= 0) {
-    display.print(isoSettings[currentDistribIndex]);
-  }
-
-  display.setTextSize(2);
-  display.setCursor(10, 31);
-
-  display.print(isoSettings[currentDistribIndex+1]);
-  
-  display.setCursor(10, 50);
-  display.setTextSize(1);
-
-  if(currentDistribIndex+2 <= 3) {
-    display.print(isoSettings[currentDistribIndex+2]);
-  }
-  
-  display.display();
-}
-
-void displayTitle() {
-    display.setTextSize(1);
-    display.setTextColor(BLACK, WHITE);
-    display.setCursor(10, 5);
-    display.print("ISO");
-    display.setTextColor(WHITE);
-    display.print(" ");
-    display.print(isoSettings[isoSettingsPosition]);
-    display.display();
-}
-
-void updateOnTheScreen(uint16_t lux, resultMeterring& result) {
-    
-    isMenuActive = false;
-    isMeasureActive = true;
-    isSettingsActve = false;
-
-    display.clearDisplay();
-
-    displayTitle();
-
-    display.setTextSize(1);
-    display.setTextColor(WHITE);
-    display.setCursor(10, 20);
-    display.print("Lux: ");
-    display.print(lux);
-    display.print(" lx");
-    
-    
-    display.setCursor(10, 30);
-    display.print("EV: ");
-    display.print(result.ev);
-    
-    display.setCursor(10, 40);
-    display.print("F: ");
-    display.print(result.fStop);
-
-    display.setCursor(10, 50);
-    display.print("Shutter: ");
-    display.print(result.shutter->name);
-
-    display.display();
-
-
 }
 
 resultMeterring caclulate(uint16_t& lux) {
@@ -196,10 +67,10 @@ resultMeterring caclulate(uint16_t& lux) {
     //3. Calculate EV100 based on Lux
     double ev100 = log10(lux/2.5)/log10(2);
     // Serial.print("EV for 100: ");
-    // Serial.println(ev100);
+    // Serial.println(ev100);   
 
     //4. Adjust EV according to the chosen film speed
-    double evISO = ev100 + log10(((double)isoSettings[isoSettingsPosition]/ (double) 100))/log10(2);
+    double evISO = ev100 + log10(((double)isoSettings[isoSettingsPosition - 1]/ (double) 100))/log10(2);
     // Serial.print("EV for ISO: ");
     // Serial.println(evISO);
 
@@ -225,6 +96,22 @@ resultMeterring caclulate(uint16_t& lux) {
     return result;
 }
 
+const char *string_list = 
+  "Measure\n"
+  "ISO";
+
+const char *iso_settings_list = 
+  "400\n"
+  "200\n"
+  "100\n"
+  "50";
+
+uint8_t current_selection = 0;
+uint8_t initial_current_selection = 1;
+int8_t previous_menu_selection = -1;
+
+bool isMenuActivated = true;
+
 void resolveISOSetting() {
   uint8_t memorizedISOValuePosition = EEPROM.read(isoSettingAddress);
   Serial.println(memorizedISOValuePosition);
@@ -233,88 +120,88 @@ void resolveISOSetting() {
   }
 }
 
+void drawMeasurePage() {
+
+  uint16_t lux = ligthSensor.readLightLevel();
+  log(lux);
+  resultMeterring result  = caclulate(lux);
+  
+  char resultStr[30];
+  int fStopIntPart = result.fStop;
+  int fStopDecimalPart = ceil((result.fStop - fStopIntPart) * 10);
+
+  Serial.println(fStopDecimalPart); 
+  sprintf(resultStr, "Lux: %d lx\nF: %d.%d \nShtr: %s",  lux, fStopIntPart, fStopDecimalPart, result.shutter->name);
+  
+  uint8_t select = u8g2.userInterfaceMessage(
+	      resultStr, 
+	      "",
+	        "",
+	        " Mes. \n Back ");
+
+  Serial.println(select);
+
+  if (select == 1) {
+    drawMeasurePage();
+  } else if (select == 2) {
+    current_selection = 0;
+  }
+}
+
+void drawSettingsPage() {
+  u8g2.clearDisplay();
+  Serial.println(iso_settings_list);
+  isoSettingsPosition = u8g2.userInterfaceSelectionList(
+      "ISO",
+      isoSettingsPosition, 
+    iso_settings_list);
+
+  EEPROM.update(isoSettingAddress, isoSettingsPosition);
+
+  //Reset to menu
+  current_selection = 0;
+}
+
 void setup() {
 
+  //Wire.begin();
   Serial.begin(9600);
-
-  pinMode(capture_button_in_pin, INPUT);
-  pinMode(scroll_button_pin, INPUT);
-
   resolveISOSetting();
 
-  Wire.begin();
+  u8g2.begin(2, 4, U8X8_PIN_NONE, U8X8_PIN_NONE, U8X8_PIN_NONE, 7);
+  u8g2.setFont(u8g2_font_6x12_tr);
+  Serial.println("loaded display");
 
   ligthSensor.begin();
-
-
-  if(!display.begin(SSD1306_SWITCHCAPVCC)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); 
-  }
-  display.display();
-  delay(2000); 
-  display.clearDisplay();
-  displayMenu(currrentMenuPosition);
+  Serial.println("loaded sensor");
 }
 
 void loop() {
 
-  // uint16_t lux = ligthSensor.readLightLevel();
-  // log(lux);
-
-  int captureButtonState = digitalRead(capture_button_in_pin);
-  int captureScrollButtonState = digitalRead(scroll_button_pin);
-
-  if (captureScrollButtonState == HIGH) {
-    if (isMenuActive) {
-      currrentMenuPosition++;
-      currrentMenuPosition = currrentMenuPosition <=1 ? currrentMenuPosition : 0;
-      displayMenu(currrentMenuPosition);
-    } else if (isSettingsActve) {
-      
-      isoSettingsPosition++;
-      
-      if (isoSettingsPosition > 3) {
-        isoSettingsPosition = 0;
-      }
-      
-      displaySettings1();
-
-    } else {
-      //Serial.print("Back to the menu. Active Position: ");
-      //Serial.println(currrentMenuPosition);
-      displayMenu(currrentMenuPosition);
+  if (previous_menu_selection != current_selection) {
+    previous_menu_selection = current_selection;
+      //Settings page activated
+    if (current_selection == 2) {
+      Serial.println("Draw settings");
+      drawSettingsPage();
     }
-  }
+    //Measure page
+    else if (current_selection == 1) {
 
-  // capture value only if the capture button is pressed
-  if (captureButtonState == HIGH) {
+      Serial.println("Draw measure page");
+      drawMeasurePage();
 
-    if (isMenuActive && currrentMenuPosition == 1) {
-    
-      displaySettings1();
-
-    } else if ((isMenuActive && currrentMenuPosition == 0) || isMeasureActive) {
-      
-      isMeasureActive = true;
-
-      uint16_t lux = ligthSensor.readLightLevel();
-      log(lux);
-
-      if (latestMetering != lux) {
-        latestMetering = lux;
-        
-        resultMeterring result  = caclulate(latestMetering);
-        updateOnTheScreen(latestMetering, result);
-      }
-    } else if (isSettingsActve) {
-      
-      EEPROM.update(isoSettingAddress, isoSettingsPosition);
-
-      displayMenu(currrentMenuPosition);
+    } 
+    //Menu
+    else {
+      Serial.println("Draw menu");
+      current_selection = u8g2.userInterfaceSelectionList(
+        "Menu",
+        initial_current_selection, 
+      string_list);
     }
+  };
+    Serial.print(current_selection);
+
+    delay(200);
   }
-
-  delay(200);
-}
-
